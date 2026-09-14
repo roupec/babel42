@@ -1,4 +1,5 @@
 babel42-finds.jsonl
+*-finds.jsonl
 __pycache__/
 *.pyc
 *.mid

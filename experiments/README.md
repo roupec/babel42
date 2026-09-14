@@ -116,6 +116,25 @@ and still visibly noise. Denser ink (`--ink 0.42`) grows blobs to a hundred pixe
 producing structure. Set against text at 10^60 and music at 10^50, the pixel reading shows
 what the size of a space really costs.
 
+## Where the results go
+
+Every experiment now leaves a record on disk, one JSON object per line, appended so
+successive runs accumulate:
+
+| file | written by | contents |
+|---|---|---|
+| `babel42-finds.jsonl` | `../babel42.py` | text finds: key, counter, the 42 characters, screen scores |
+| `multiscript-finds.jsonl` | `multiscript.py` | each well-formed expression with alphabet, k, key, counter, codepoints; each non-trivial identity from the grammar draw |
+| `melody42-finds.jsonl` | `melody42.py` | kept melodies: key, counter, mode, tonic, scale, motif length, cadence, note cells, and the paths of the `.mid` / `.wav` |
+| `pixels42-finds.jsonl` | `pixels42.py` | each new best field: grid, address, ink, symmetry, blob, and the bitmap as rows of 0/1 |
+
+Both defaults can be moved with `--ledger PATH` or switched off with `--no-ledger`. Every
+record carries the address it was found at, so a line is enough to redraw or replay the
+find - `--verify KEY:COUNTER`, `--index N`. Characters are stored as codepoints as well as
+glyphs, because Greek omicron and Latin o look identical and are not.
+
+The ledgers are git-ignored, along with generated `.wav` and `.mid`.
+
 ## Licence
 
 Code: MIT, as the rest of the repository. **Melodies and other output are dedicated to

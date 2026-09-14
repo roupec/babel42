@@ -10,7 +10,7 @@ Measures three things:
 
 Run:  python3 multiscript.py
 """
-import hashlib, math, os, random, re, sys, time
+import hashlib, json, math, os, random, re, sys, time
 
 WIDTH = 42
 BLANK = " "
@@ -165,6 +165,9 @@ def uniform_trial(n=200000, k=8, alphabet_name="mixed_all", seconds=25):
                 continue
             wf += 1
             hits.append((r, v, c))
+            ledger({"kind": "expression", "alphabet": alphabet_name, "k": k,
+                    "key": key.hex(), "counter": c, "text": r, "value": v,
+                    "codepoints": [hex(ord(ch)) for ch in r]})
         if time.time() - t0 > seconds:
             n = c + 1
             break
@@ -232,6 +235,8 @@ def grammar_trial(n=400000, seconds=25):
                 if atom and atom in s:
                     break                      # restatement of the target itself
                 nontrivial += 1
+                ledger({"kind": "identity", "constant": name, "expression": s,
+                        "value": v})
                 if len(show) < 10:
                     show.append((name, s, v))
                 break
@@ -245,6 +250,20 @@ def grammar_trial(n=400000, seconds=25):
     for name, s, v in show:
         print(f"     {name} = {s} = {v}")
     print()
+
+
+LEDGER = [None]
+
+
+def ledger(rec):
+    """Append one find as a JSON line. Nothing is written unless --ledger is on."""
+    path = LEDGER[0]
+    if not path:
+        return
+    rec = dict(rec)
+    rec["at"] = time.strftime("%Y-%m-%dT%H:%M:%S")
+    with open(path, "a", encoding="utf-8") as f:
+        f.write(json.dumps(rec, ensure_ascii=False) + "\n")
 
 
 def resolve(spec):
@@ -271,7 +290,14 @@ if __name__ == "__main__":
     p.add_argument("--seconds", type=float, default=10)
     p.add_argument("--list", action="store_true", help="show the named sets and exit")
     p.add_argument("--grammar", action="store_true", help="run the grammar draw too")
+    p.add_argument("--ledger", default="multiscript-finds.jsonl",
+                   help="append finds to this JSON-lines file")
+    p.add_argument("--no-ledger", dest="ledger", action="store_const", const=None)
     a = p.parse_args()
+
+    LEDGER[0] = a.ledger
+    if a.ledger:
+        print(f"ledger: {a.ledger}")
 
     if a.list:
         for name, alpha in SETS.items():

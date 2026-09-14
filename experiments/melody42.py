@@ -15,7 +15,7 @@ Survivors are written as .mid and rendered to .wav with the standard library onl
 
 Run:  python3 melody42.py --seconds 20
 """
-import argparse, hashlib, math, os, shutil, struct, subprocess, sys, time, wave
+import argparse, hashlib, json, math, os, shutil, struct, subprocess, sys, time, wave
 
 WIDTH = 42
 REST = -1
@@ -180,6 +180,15 @@ def show(cells):
     return " ".join("." if c == REST else NAMES[c % 12] + str(c // 12) for c in cells)
 
 
+def note_find(path, rec):
+    if not path:
+        return
+    rec = dict(rec)
+    rec["at"] = time.strftime("%Y-%m-%dT%H:%M:%S")
+    with open(path, "a", encoding="utf-8") as f:
+        f.write(json.dumps(rec, ensure_ascii=False) + "\n")
+
+
 # ------------------------------------------------------------------ playback
 def player():
     """First working audio player on this machine, or None.
@@ -234,10 +243,15 @@ def main():
     p.add_argument("--no-play", dest="play", action="store_false")
     p.add_argument("--live", action="store_true",
                    help="also play each new best melody as it is found")
+    p.add_argument("--ledger", default="melody42-finds.jsonl",
+                   help="append the kept melodies to this JSON-lines file")
+    p.add_argument("--no-ledger", dest="ledger", action="store_const", const=None)
     p.add_argument("--repeat", type=int, default=1,
                    help="how many times to play each find")
     a = p.parse_args()
 
+    if a.ledger:
+        print(f"ledger: {a.ledger}")
     cmd = player() if (a.play or a.live) else None
     if (a.play or a.live) and cmd is None:
         print("  no audio player found - writing files only "
@@ -297,6 +311,11 @@ def main():
               f"{s['notes']} notes")
         print(f"    {show(cells)}")
         print(f"    {stem}.mid / .wav")
+        note_find(a.ledger, {"key": key.hex(), "counter": ctr, "mode": a.mode,
+                             "tonic": NAMES[s["tonic"]], "scale": s["scale"],
+                             "motif": m, "cadence": bool(cad), "notes": s["notes"],
+                             "cells": list(cells), "names": show(cells),
+                             "wav": stem + ".wav", "mid": stem + ".mid"})
         if a.play and cmd:
             for _ in range(max(1, a.repeat)):
                 play(stem + ".wav", cmd, blocking=True)

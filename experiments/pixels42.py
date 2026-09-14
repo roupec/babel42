@@ -17,7 +17,7 @@ CPU. That is what makes it usable as a screensaver rather than a heater.
     python3 pixels42.py --frames 3      print a few frames and exit (no live screen)
     python3 pixels42.py --verify KEY:N  redraw one field from its address
 """
-import argparse, hashlib, os, sys, time
+import argparse, hashlib, json, os, sys, time
 
 SIDE = 42          # default grid, kept as the working version
 W = H = SIDE       # set by --grid; 42 x 42 reproduces every earlier address
@@ -111,6 +111,16 @@ def score(rows, sym_floor=0.0):
             "value": round(sym * 100 + blob / 10, 2)}
 
 
+def note_find(path, rec):
+    """One JSON line per new best field, so a run leaves a record behind."""
+    if not path:
+        return
+    rec = dict(rec)
+    rec["at"] = time.strftime("%Y-%m-%dT%H:%M:%S")
+    with open(path, "a", encoding="utf-8") as f:
+        f.write(json.dumps(rec) + "\n")
+
+
 # --------------------------------------------------------------- rendering
 def as_braille(rows):
     out = []
@@ -166,6 +176,9 @@ def main():
                    help="walk every bitmap in order instead of sampling at random "
                         "(only sensible for small grids)")
     p.add_argument("--frames", type=int, default=0, help="print N frames and exit")
+    p.add_argument("--ledger", default="pixels42-finds.jsonl",
+                   help="append each new best field to this JSON-lines file")
+    p.add_argument("--no-ledger", dest="ledger", action="store_const", const=None)
     p.add_argument("--key", default=None)
     p.add_argument("--verify", default=None, metavar="KEY:COUNTER")
     p.add_argument("--index", type=int, default=None,
@@ -197,6 +210,8 @@ def main():
         return
 
     key = bytes.fromhex(a.key) if a.key else os.urandom(16)
+    if a.ledger:
+        print(f"ledger: {a.ledger}")
     live = a.frames == 0 and sys.stdout.isatty()
     counter = 0
     best = None
@@ -221,6 +236,14 @@ def main():
                 s = score(rows, 0.0 if best is None else best["sym"])
                 if s and (best is None or s["value"] > best["value"]):
                     best, best_rows, best_at = s, rows, counter - 1
+                    note_find(a.ledger, {
+                        "grid": f"{W}x{H}", "mode": "enumerate" if a.enumerate else "hash",
+                        "key": None if a.enumerate else key.hex(),
+                        "address": (f"index {best_at}" if a.enumerate
+                                    else f"{key.hex()}:{best_at}"),
+                        "ink": round(s["ink"], 4), "symmetry": round(s["sym"], 4),
+                        "blob": s["blob"],
+                        "rows": ["".join(str(b) for b in r) for r in rows]})
 
             el = time.time() - t0
             done = (f"   {100 * counter / 2 ** (W * H):.4f}% of the space"
