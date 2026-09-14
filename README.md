@@ -97,6 +97,21 @@ results and what they teach are in `experiments/README.md` — the short version
 music is about forty-six orders of magnitude more forgiving than text, and that in every
 case structure has to go into the generator rather than into the alphabet.
 
+## Independent draws
+
+By default one key is drawn at startup and the counter climbs from there, so a run is a
+single deterministic thread through the space, resumable with `--key` and `--start`. That
+walk is systematic, not random - the randomness only chooses where the thread begins.
+
+    python3 babel42.py --random
+
+`--random` makes every field independent: 16 fresh bytes from the operating system per
+field, counter 0, no field derived from any other. The address is then that field's own
+key, so `--verify <key>:0` still reproduces it and each ledger line carries its own key.
+Measured cost: 96,000 fields/s against 108,000 sequential, about 11 %.
+
+`experiments/pixels42.py` and `experiments/melody42.py` take the same `--random` flag.
+
 ## Licence
 
 MIT. Findings are free to use by anyone.

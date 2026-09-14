@@ -100,6 +100,8 @@ def stage3_words(s: str):
 def run(args):
     key = bytes.fromhex(args.key) if args.key else os.urandom(16)   # entropy used exactly once
     keyhex = key.hex()
+    if args.random:
+        print("babel42  independent mode: fresh 16 bytes of OS entropy per field")
     print(f"babel42  width={WIDTH}  alphabet={BASE}  key={keyhex}")
     print(f"space = {BASE}^{WIDTH} = 10^{WIDTH * math.log10(BASE):.1f} fields\n")
 
@@ -116,6 +118,13 @@ def run(args):
             while True:
                 t = time.time()
                 for _ in range(batch):
+                    if args.random:
+                        # Every field gets its own key straight from the OS, so no field
+                        # depends on any other. The address is that key with counter 0,
+                        # which --verify reads unchanged.
+                        key = os.urandom(16)
+                        keyhex = key.hex()
+                        counter = 0
                     s = field(key, counter)
                     counter += 1
                     n += 1
@@ -129,6 +138,7 @@ def run(args):
                         continue
                     kept += 1
                     rec = {"key": keyhex, "counter": counter - 1, "text": s,
+                           "mode": "independent" if args.random else "sequential",
                            "bigram": round(b, 3), "covered": covered, "words": words}
                     ledger.write(json.dumps(rec) + "\n")
                     ledger.flush()
@@ -155,8 +165,12 @@ def run(args):
     print(f"\n\n{n:,} fields in {el:.0f}s ({n / max(el, 1e-9):,.0f}/s), {kept} kept, best cover {best}")
     print(f"that is 10^{math.log10(max(n, 1)):.1f} of 10^{WIDTH * math.log10(BASE):.1f} - "
           f"a fraction of 10^{math.log10(max(n, 1)) - WIDTH * math.log10(BASE):.1f}")
-    print(f"finds appended to {args.ledger}; anyone can check one with "
-          f"--verify {keyhex}:<counter>")
+    if args.random:
+        print(f"finds appended to {args.ledger}; each line carries its own key, "
+              f"check one with --verify <key>:0")
+    else:
+        print(f"finds appended to {args.ledger}; anyone can check one with "
+              f"--verify {keyhex}:<counter>")
 
 
 def stats():
@@ -175,6 +189,9 @@ def main():
     p.add_argument("--seconds", type=float, default=0, help="stop after this long (0 = forever)")
     p.add_argument("--key", help="16-byte hex key, to reproduce or extend a run")
     p.add_argument("--start", type=int, default=0, help="starting counter")
+    p.add_argument("--random", action="store_true",
+                   help="draw fresh OS entropy for every field instead of counting "
+                        "upward from one key")
     p.add_argument("--covered", type=int, default=8, help="minimum characters covered by words")
     p.add_argument("--bigram", type=float, default=-7.05, help="minimum mean bigram log-probability")
     p.add_argument("--ledger", default=LEDGER)

@@ -235,6 +235,8 @@ def main():
     p = argparse.ArgumentParser()
     p.add_argument("--seconds", type=float, default=20)
     p.add_argument("--key", default=None)
+    p.add_argument("--random", action="store_true",
+                   help="fresh OS entropy per field instead of counting upward")
     p.add_argument("--out", default=".")
     p.add_argument("--keep", type=int, default=3)
     p.add_argument("--mode", choices=("chromatic", "diatonic", "walk"), default="walk")
@@ -268,7 +270,9 @@ def main():
     best = []
     while time.time() - t0 < a.seconds:
         for _ in range(2000):
-            cells = field(key, n, mode=a.mode)
+            if a.random:
+                key = os.urandom(16)
+            cells = field(key, 0 if a.random else n, mode=a.mode)
             n += 1
             if key_fit(cells):
                 fit += 1
@@ -277,7 +281,8 @@ def main():
                     s = score(cells)
                     if s:
                         kept += 1
-                        cand = (s["motif"], s["cadence"], n - 1, cells, s)
+                        cand = (s["motif"], s["cadence"], 0 if a.random else n - 1,
+                                cells, s)
                         if a.live and (not best or cand[:2] > max(b[:2] for b in best)):
                             stem = os.path.join(a.out,
                                                 f"melody42-{key.hex()[:8]}-{n-1}")
@@ -311,7 +316,8 @@ def main():
               f"{s['notes']} notes")
         print(f"    {show(cells)}")
         print(f"    {stem}.mid / .wav")
-        note_find(a.ledger, {"key": key.hex(), "counter": ctr, "mode": a.mode,
+        note_find(a.ledger, {"key": key.hex(), "counter": ctr,
+                             "mode_entropy": "independent" if a.random else "sequential", "mode": a.mode,
                              "tonic": NAMES[s["tonic"]], "scale": s["scale"],
                              "motif": m, "cadence": bool(cad), "notes": s["notes"],
                              "cells": list(cells), "names": show(cells),

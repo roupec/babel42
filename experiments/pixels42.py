@@ -179,6 +179,8 @@ def main():
     p.add_argument("--ledger", default="pixels42-finds.jsonl",
                    help="append each new best field to this JSON-lines file")
     p.add_argument("--no-ledger", dest="ledger", action="store_const", const=None)
+    p.add_argument("--random", action="store_true",
+                   help="fresh OS entropy per field instead of counting upward")
     p.add_argument("--key", default=None)
     p.add_argument("--verify", default=None, metavar="KEY:COUNTER")
     p.add_argument("--index", type=int, default=None,
@@ -230,6 +232,9 @@ def main():
             work = time.time()
             rows = None
             while time.time() - work < slice_s:
+                if a.random and not a.enumerate:
+                    key = os.urandom(16)
+                    counter = 0
                 rows = pattern(counter) if a.enumerate else field(key, counter, a.ink)
                 counter += 1
                 tested += 1
