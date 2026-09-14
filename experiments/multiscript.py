@@ -247,8 +247,49 @@ def grammar_trial(n=400000, seconds=25):
     print()
 
 
+def resolve(spec):
+    """'greek', 'greek+math', or a literal string of characters."""
+    if spec in SETS:
+        return SETS[spec], spec
+    parts = spec.split("+")
+    if all(p in SETS for p in parts):
+        seen = ""
+        for p in parts:
+            for c in SETS[p]:
+                if c not in seen:
+                    seen += c
+        return seen, spec
+    return spec, "custom"
+
+
 if __name__ == "__main__":
-    counting()
-    uniform_trial(k=8, alphabet_name="mixed_all")
-    uniform_trial(k=8, alphabet_name="math")
-    grammar_trial()
+    import argparse
+    p = argparse.ArgumentParser(description="multi-script 42-cell fields")
+    p.add_argument("--alphabet", default=None,
+                   help="named set, sets joined with '+', or literal characters")
+    p.add_argument("--k", type=int, default=8, help="cells filled, 1..42")
+    p.add_argument("--seconds", type=float, default=10)
+    p.add_argument("--list", action="store_true", help="show the named sets and exit")
+    p.add_argument("--grammar", action="store_true", help="run the grammar draw too")
+    a = p.parse_args()
+
+    if a.list:
+        for name, alpha in SETS.items():
+            print(f"{name:10} {len(alpha):>4}  {alpha}")
+        raise SystemExit
+
+    if a.alphabet is None:
+        counting()
+        uniform_trial(k=8, alphabet_name="mixed_all", seconds=a.seconds)
+        uniform_trial(k=8, alphabet_name="math", seconds=a.seconds)
+        grammar_trial(seconds=a.seconds)
+    else:
+        alpha, label = resolve(a.alphabet)
+        SETS[label] = alpha
+        print(f"alphabet {label} (|A|={len(alpha)}): {alpha}")
+        pos = math.lgamma(WIDTH + 1) - math.lgamma(a.k + 1) - math.lgamma(WIDTH - a.k + 1)
+        print(f"space with {a.k} of {WIDTH} cells filled: "
+              f"10^{pos/math.log(10) + a.k*math.log10(len(alpha)):.1f}\n")
+        uniform_trial(n=10**9, k=a.k, alphabet_name=label, seconds=a.seconds)
+        if a.grammar:
+            grammar_trial(seconds=a.seconds)

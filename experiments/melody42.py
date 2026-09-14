@@ -15,7 +15,7 @@ Survivors are written as .mid and rendered to .wav with the standard library onl
 
 Run:  python3 melody42.py --seconds 20
 """
-import argparse, hashlib, math, os, struct, time, wave
+import argparse, hashlib, math, os, shutil, struct, subprocess, sys, time, wave
 
 WIDTH = 42
 REST = -1
@@ -180,6 +180,47 @@ def show(cells):
     return " ".join("." if c == REST else NAMES[c % 12] + str(c // 12) for c in cells)
 
 
+# ------------------------------------------------------------------ playback
+def player():
+    """First working audio player on this machine, or None.
+
+    macOS ships afplay; Linux desktops have paplay, aplay or ffplay; Windows uses the
+    winsound module in the standard library. Nothing is installed for you.
+    """
+    if sys.platform == "darwin" and shutil.which("afplay"):
+        return ("afplay",)
+    if sys.platform.startswith("win"):
+        return ("winsound",)
+    for c in ("paplay", "aplay", "ffplay", "play", "mpv"):
+        if shutil.which(c):
+            return (c, "-nodisp", "-autoexit") if c == "ffplay" else (c,)
+    return None
+
+
+_playing = [None]
+
+
+def play(path, cmd, blocking=True):
+    """Play a .wav. Non-blocking calls are dropped while something is still sounding."""
+    if cmd is None:
+        return False
+    if cmd[0] == "winsound":
+        import winsound
+        winsound.PlaySound(path, winsound.SND_FILENAME |
+                           (0 if blocking else winsound.SND_ASYNC))
+        return True
+    if not blocking:
+        if _playing[0] is not None and _playing[0].poll() is None:
+            return False
+        _playing[0] = subprocess.Popen(list(cmd) + [path],
+                                       stdout=subprocess.DEVNULL,
+                                       stderr=subprocess.DEVNULL)
+        return True
+    subprocess.run(list(cmd) + [path], stdout=subprocess.DEVNULL,
+                   stderr=subprocess.DEVNULL)
+    return True
+
+
 # ------------------------------------------------------------------ main
 def main():
     p = argparse.ArgumentParser()
@@ -188,7 +229,19 @@ def main():
     p.add_argument("--out", default=".")
     p.add_argument("--keep", type=int, default=3)
     p.add_argument("--mode", choices=("chromatic", "diatonic", "walk"), default="walk")
+    p.add_argument("--play", dest="play", action="store_true", default=True,
+                   help="play the finds when the search ends (default)")
+    p.add_argument("--no-play", dest="play", action="store_false")
+    p.add_argument("--live", action="store_true",
+                   help="also play each new best melody as it is found")
+    p.add_argument("--repeat", type=int, default=1,
+                   help="how many times to play each find")
     a = p.parse_args()
+
+    cmd = player() if (a.play or a.live) else None
+    if (a.play or a.live) and cmd is None:
+        print("  no audio player found - writing files only "
+              "(macOS: afplay, Linux: install pulseaudio-utils or alsa-utils)")
 
     key = bytes.fromhex(a.key) if a.key else os.urandom(16)
     A = {"diatonic": 16, "walk": 16}.get(a.mode, 26)
@@ -210,7 +263,19 @@ def main():
                     s = score(cells)
                     if s:
                         kept += 1
-                        best.append((s["motif"], s["cadence"], n - 1, cells, s))
+                        cand = (s["motif"], s["cadence"], n - 1, cells, s)
+                        if a.live and (not best or cand[:2] > max(b[:2] for b in best)):
+                            stem = os.path.join(a.out,
+                                                f"melody42-{key.hex()[:8]}-{n-1}")
+                            wav(cells, stem + ".wav")
+                            if play(stem + ".wav", cmd, blocking=False):
+                                print(f"\r  playing counter {n-1}: "
+                                      f"{NAMES[s['tonic']]} {s['scale']}, "
+                                      f"motif {s['motif']} moves        ")
+                        best.append(cand)
+                        if len(best) > 400:          # keep the list bounded
+                            best.sort(key=lambda x: (x[0], x[1]), reverse=True)
+                            del best[a.keep * 4:]
         el = time.time() - t0
         if el - last[0] >= 2.0:
             last[0] = el
@@ -232,6 +297,9 @@ def main():
               f"{s['notes']} notes")
         print(f"    {show(cells)}")
         print(f"    {stem}.mid / .wav")
+        if a.play and cmd:
+            for _ in range(max(1, a.repeat)):
+                play(stem + ".wav", cmd, blocking=True)
 
 
 if __name__ == "__main__":
