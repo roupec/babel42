@@ -147,9 +147,10 @@ def counting():
 
 
 # ---------------------------------------------------------------- 2. uniform draw
-def uniform_trial(n=200000, k=8, alphabet_name="mixed_all", seconds=25):
+def uniform_trial(n=200000, k=8, alphabet_name="mixed_all", seconds=25, key=None):
     alpha = SETS[alphabet_name]
-    key = os.urandom(16)
+    key = key or os.urandom(16)
+    print(f"key {key.hex()}")
     t0 = time.time()
     seen = coh = wf = 0
     hits = []
@@ -217,8 +218,10 @@ def grammar_draw(rng, depth=0):
     return s, v
 
 
-def grammar_trial(n=400000, seconds=25):
-    rng = random.Random(20260914)
+def grammar_trial(n=400000, seconds=25, seed=None):
+    seed = os.urandom(8).hex() if seed is None else seed
+    print(f"seed {seed}")
+    rng = random.Random(seed)
     t0 = time.time()
     exact = nontrivial = 0
     show = []
@@ -290,11 +293,16 @@ if __name__ == "__main__":
     p.add_argument("--seconds", type=float, default=10)
     p.add_argument("--list", action="store_true", help="show the named sets and exit")
     p.add_argument("--grammar", action="store_true", help="run the grammar draw too")
+    p.add_argument("--key", default=None,
+                   help="16-byte hex key, to reproduce or extend a run")
+    p.add_argument("--seed", default=None,
+                   help="seed for the grammar draw, to reproduce a run")
     p.add_argument("--ledger", default="multiscript-finds.jsonl",
                    help="append finds to this JSON-lines file")
     p.add_argument("--no-ledger", dest="ledger", action="store_const", const=None)
     a = p.parse_args()
 
+    k0 = bytes.fromhex(a.key) if a.key else None
     LEDGER[0] = a.ledger
     if a.ledger:
         print(f"ledger: {a.ledger}")
@@ -306,9 +314,9 @@ if __name__ == "__main__":
 
     if a.alphabet is None:
         counting()
-        uniform_trial(k=8, alphabet_name="mixed_all", seconds=a.seconds)
-        uniform_trial(k=8, alphabet_name="math", seconds=a.seconds)
-        grammar_trial(seconds=a.seconds)
+        uniform_trial(k=8, alphabet_name="mixed_all", seconds=a.seconds, key=k0)
+        uniform_trial(k=8, alphabet_name="math", seconds=a.seconds, key=k0)
+        grammar_trial(seconds=a.seconds, seed=a.seed)
     else:
         alpha, label = resolve(a.alphabet)
         SETS[label] = alpha
@@ -316,6 +324,6 @@ if __name__ == "__main__":
         pos = math.lgamma(WIDTH + 1) - math.lgamma(a.k + 1) - math.lgamma(WIDTH - a.k + 1)
         print(f"space with {a.k} of {WIDTH} cells filled: "
               f"10^{pos/math.log(10) + a.k*math.log10(len(alpha)):.1f}\n")
-        uniform_trial(n=10**9, k=a.k, alphabet_name=label, seconds=a.seconds)
+        uniform_trial(n=10**9, k=a.k, alphabet_name=label, seconds=a.seconds, key=k0)
         if a.grammar:
-            grammar_trial(seconds=a.seconds)
+            grammar_trial(seconds=a.seconds, seed=a.seed)

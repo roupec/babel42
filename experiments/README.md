@@ -116,6 +116,14 @@ and still visibly noise. Denser ink (`--ink 0.42`) grows blobs to a hundred pixe
 producing structure. Set against text at 10^60 and music at 10^50, the pixel reading shows
 what the size of a space really costs.
 
+## Keys and seeds
+
+Each run draws a fresh 16-byte key from the operating system, so two runs never cover the
+same ground; the counter starts at 0 and the address is `key:counter`. Pass `--key HEX` to
+reproduce or extend a run, and in `babel42.py` `--start N` to resume where you stopped.
+`multiscript.py` now takes `--key` too, and its grammar draw takes `--seed` - it used to be
+seeded with a fixed constant, which is why it returned the same identities every time.
+
 ## Where the results go
 
 Every experiment now leaves a record on disk, one JSON object per line, appended so
