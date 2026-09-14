@@ -81,6 +81,8 @@ Parsons contour so "already known" is a hash lookup, and let people vote with th
     python3 pixels42.py --fps 4 --cpu 8      lighter
     python3 pixels42.py --render half        half-block pixels instead of braille
     python3 pixels42.py --verify KEY:COUNTER
+    python3 pixels42.py --grid 7x6 --enumerate      walk the whole space instead
+    python3 pixels42.py --grid 12 --render half
 
 Two panes: the field being drawn now, and the best one so far. Braille packs eight pixels
 per character, so 42 x 42 fits in 21 columns; 42 is not divisible by 4, so the bottom
@@ -94,7 +96,21 @@ them at 17,800/s; the blob scan costs 3,100/s and therefore runs only when a fie
 beats the incumbent on symmetry. At the defaults, 2,800 fields/s tested at 16 % of one
 core.
 
-And it finds nothing, which is the honest result. The space is 2^1764 = 10^531. Random
+`--grid` is the real knob, and it is bits per cell rather than the count of cells that
+decides everything. 42 cells of 27 symbols (the text variant) is 10^60. 42 cells of one bit
+each - a 7x6 grid - is 2^42 = 4.4 x 10^12, small enough to walk end to end, so `--enumerate`
+visits every bitmap exactly once instead of sampling. Plain counting is useless to watch,
+because the low bits move first and the top rows stay blank for billions of steps; the
+enumeration multiplies the index by an odd constant modulo 2^n, which is a full-cycle
+permutation, so coverage stays complete and consecutive frames look unrelated. 12x12 sits
+at 10^43.3, about where the music does. 42x42 remains the default.
+
+At 7x6 the screens finally bite: 458,000 patterns in 6 s produced a perfectly symmetric
+bitmap with a 7-pixel connected blob at index 33021, redrawable with `--index 33021`.
+A blank field is also perfectly symmetric, which is why scoring now requires ink between
+0.12 and 0.70 - the all-zero bitmap won the first enumeration run outright.
+
+At 42x42 it finds nothing, which is the honest result. The space is 2^1764 = 10^531. Random
 symmetry sits at 0.5; a few thousand fields reached 0.635, seven standard deviations out
 and still visibly noise. Denser ink (`--ink 0.42`) grows blobs to a hundred pixels without
 producing structure. Set against text at 10^60 and music at 10^50, the pixel reading shows

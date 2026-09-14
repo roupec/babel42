@@ -19,7 +19,8 @@ CPU. That is what makes it usable as a screensaver rather than a heater.
 """
 import argparse, hashlib, os, sys, time
 
-SIDE = 42
+SIDE = 42          # default grid, kept as the working version
+W = H = SIDE       # set by --grid; 42 x 42 reproduces every earlier address
 BRAILLE = ((0x01, 0x08), (0x02, 0x10), (0x04, 0x20), (0x40, 0x80))
 
 
@@ -28,33 +29,48 @@ _TABLES = {}
 
 
 def field(key, counter, ink=0.30):
-    """42 x 42 bits as 42 rows of bytes, one keyed hash call per field."""
+    """W x H bits as H rows of bytes, one keyed hash call per field."""
     table = _TABLES.get(ink)
     if table is None:
         thr = int(255 * ink)
         table = _TABLES[ink] = bytes(1 if i <= thr else 0 for i in range(256))
     flat = hashlib.shake_256(key + counter.to_bytes(8, "big")).digest(
-        SIDE * SIDE).translate(table)
-    return [flat[r * SIDE:(r + 1) * SIDE] for r in range(SIDE)]
+        W * H).translate(table)
+    return [flat[r * W:(r + 1) * W] for r in range(H)]
+
+
+def pattern(index):
+    """The index-th bitmap of the 2^(W*H) that exist - for small grids only.
+
+    Plain counting is useless to watch: the first billions of patterns all have empty
+    top rows, because the low bits move first. Multiplying by an odd constant modulo
+    2^(W*H) is a full-cycle permutation, so every bitmap is still visited exactly once
+    but consecutive ones look unrelated.
+    """
+    n = W * H
+    index = (index * 0x9E3779B97F4A7C15) % (1 << n)
+    bits = bin(index)[2:].rjust(n, "0")
+    flat = bytes(1 if c == "1" else 0 for c in bits)
+    return [flat[r * W:(r + 1) * W] for r in range(H)]
 
 
 # --------------------------------------------------------------- the screen
-H = SIDE // 2
-
-
 def symmetry(rows):
     """Fraction of cells matching their mirror image about the vertical axis."""
+    h = W // 2
+    if h == 0:
+        return 1.0
     same = 0
     for r in rows:
-        same += sum(a == b for a, b in zip(r[:H], r[:H - 1:-1]))
-    return same / (SIDE * H)
+        same += sum(a == b for a, b in zip(r[:h], r[:h - 1:-1]))
+    return same / (len(rows) * h)
 
 
 def largest_blob(rows):
-    seen = [[False] * SIDE for _ in range(SIDE)]
+    seen = [[False] * W for _ in range(H)]
     best = 0
-    for y in range(SIDE):
-        for x in range(SIDE):
+    for y in range(H):
+        for x in range(W):
             if rows[y][x] and not seen[y][x]:
                 stack = [(y, x)]
                 seen[y][x] = True
@@ -64,7 +80,7 @@ def largest_blob(rows):
                     n += 1
                     for dy, dx in ((1, 0), (-1, 0), (0, 1), (0, -1)):
                         ny, nx = cy + dy, cx + dx
-                        if 0 <= ny < SIDE and 0 <= nx < SIDE \
+                        if 0 <= ny < H and 0 <= nx < W \
                                 and rows[ny][nx] and not seen[ny][nx]:
                             seen[ny][nx] = True
                             stack.append((ny, nx))
@@ -73,13 +89,23 @@ def largest_blob(rows):
     return best
 
 
+INK_BAND = (0.12, 0.70)
+
+
 def score(rows, sym_floor=0.0):
-    """Symmetry is cheap and runs on every field; the connected-component scan is
-    twenty times dearer, so it runs only when the field is already a contender."""
+    """Ink first, then symmetry, then the blob scan.
+
+    The ink band exists because a blank field is perfectly symmetric and would otherwise
+    win every run for ever - which is exactly what happened the first time enumeration
+    reached the all-zero bitmap. The connected-component scan is twenty times dearer than
+    symmetry, so it runs only once a field is already a contender.
+    """
+    ink = sum(bytes(r).count(1) for r in rows) / (W * H)
+    if not INK_BAND[0] <= ink <= INK_BAND[1]:
+        return None
     sym = symmetry(rows)
     if sym < sym_floor:
         return None
-    ink = sum(bytes(r).count(1) for r in rows) / (SIDE * SIDE)
     blob = largest_blob(rows)
     return {"ink": ink, "sym": sym, "blob": blob,
             "value": round(sym * 100 + blob / 10, 2)}
@@ -88,14 +114,14 @@ def score(rows, sym_floor=0.0):
 # --------------------------------------------------------------- rendering
 def as_braille(rows):
     out = []
-    for by in range(0, SIDE, 4):
+    for by in range(0, H, 4):
         line = []
-        for bx in range(0, SIDE, 2):
+        for bx in range(0, W, 2):
             v = 0
             for dy in range(4):
                 for dx in range(2):
                     y, x = by + dy, bx + dx
-                    if y < SIDE and x < SIDE and rows[y][x]:
+                    if y < H and x < W and rows[y][x]:
                         v |= BRAILLE[dy][dx]
             line.append(chr(0x2800 + v))
         out.append("".join(line))
@@ -104,11 +130,11 @@ def as_braille(rows):
 
 def as_half(rows):
     out = []
-    for y in range(0, SIDE, 2):
+    for y in range(0, H, 2):
         line = []
-        for x in range(SIDE):
+        for x in range(W):
             t = rows[y][x]
-            b = rows[y + 1][x] if y + 1 < SIDE else 0
+            b = rows[y + 1][x] if y + 1 < H else 0
             line.append(" ▄▀█"[(t << 1) | b] if (t or b) else " ")
         out.append("".join(line))
     return out
@@ -134,10 +160,33 @@ def main():
     p.add_argument("--cpu", type=float, default=15.0, help="percent of one core")
     p.add_argument("--ink", type=float, default=0.30)
     p.add_argument("--render", choices=("braille", "half"), default="braille")
+    p.add_argument("--grid", default="42x42",
+                   help="WxH or a single N for NxN; 42x42 is the default working version")
+    p.add_argument("--enumerate", action="store_true",
+                   help="walk every bitmap in order instead of sampling at random "
+                        "(only sensible for small grids)")
     p.add_argument("--frames", type=int, default=0, help="print N frames and exit")
     p.add_argument("--key", default=None)
     p.add_argument("--verify", default=None, metavar="KEY:COUNTER")
+    p.add_argument("--index", type=int, default=None,
+                   help="redraw one enumerated bitmap by index")
     a = p.parse_args()
+
+    global W, H
+    if "x" in a.grid.lower():
+        W, H = (int(v) for v in a.grid.lower().split("x"))
+    else:
+        W = H = int(a.grid)
+    if not (1 <= W <= 400 and 1 <= H <= 400):
+        raise SystemExit("grid out of range")
+
+    if a.index is not None:
+        rows = pattern(a.index)
+        s = score(rows)
+        print("\n".join((as_braille if a.render == "braille" else as_half)(rows)))
+        print(f"index {a.index}  ink {s['ink']:.3f}  symmetry {s['sym']:.3f}  "
+              f"largest blob {s['blob']}")
+        return
 
     if a.verify:
         k, c = a.verify.split(":")
@@ -166,7 +215,7 @@ def main():
             work = time.time()
             rows = None
             while time.time() - work < slice_s:
-                rows = field(key, counter, a.ink)
+                rows = pattern(counter) if a.enumerate else field(key, counter, a.ink)
                 counter += 1
                 tested += 1
                 s = score(rows, 0.0 if best is None else best["sym"])
@@ -174,9 +223,12 @@ def main():
                     best, best_rows, best_at = s, rows, counter - 1
 
             el = time.time() - t0
-            stats = (f"  {tested:,} fields   {tested/max(el,1e-9):,.0f}/s   "
+            done = (f"   {100 * counter / 2 ** (W * H):.4f}% of the space"
+                    if a.enumerate and W * H <= 40 else "")
+            where = f"index {best_at}" if a.enumerate else f"{key.hex()[:8]}:{best_at}"
+            stats = (f"  {W}x{H}{done}   {tested:,} fields   {tested/max(el,1e-9):,.0f}/s   "
                      f"{el:,.0f}s   best: symmetry {best['sym']:.3f}  "
-                     f"blob {best['blob']}  at {key.hex()[:8]}:{best_at}")
+                     f"blob {best['blob']}  at {where}")
             lines = frame(rows, best_rows, a.render, stats)
             if live:
                 sys.stdout.write("\x1b[H" + "\n".join(l + "\x1b[K" for l in lines))
@@ -194,9 +246,11 @@ def main():
             sys.stdout.write("\x1b[?25h\n")
         el = time.time() - t0
         print(f"\n{tested:,} fields in {el:.0f}s ({tested/max(el,1e-9):,.0f}/s)")
-        print(f"space 2^{SIDE*SIDE} = 10^{SIDE*SIDE*0.30103:.0f} bitmaps")
-        print(f"best  symmetry {best['sym']:.3f}  largest blob {best['blob']}  "
-              f"address {key.hex()}:{best_at}")
+        n = W * H
+        print(f"space 2^{n} = 10^{n * 0.30103:.1f} bitmaps"
+              + (f"  ({2 ** n:,} - exhaustible)" if n <= 46 else ""))
+        addr = f"index {best_at}" if a.enumerate else f"{key.hex()}:{best_at}"
+        print(f"best  symmetry {best['sym']:.3f}  largest blob {best['blob']}  {addr}")
 
 
 if __name__ == "__main__":
