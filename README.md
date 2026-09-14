@@ -88,6 +88,15 @@ land.
     --key HEX         reuse a key, to extend or reproduce a run
     --start N         starting counter
 
+## Other readings of the same field
+
+`experiments/` holds two variants that share the addressing scheme: `multiscript.py`
+(characters from Latin, Czech, Greek and mathematical alphabets, sparsely placed) and
+`melody42.py` (the 42 cells read as music, finds written as MIDI and WAV). Measured
+results and what they teach are in `experiments/README.md` — the short version is that
+music is about forty-six orders of magnitude more forgiving than text, and that in every
+case structure has to go into the generator rather than into the alphabet.
+
 ## Licence
 
 MIT. Findings are free to use by anyone.
